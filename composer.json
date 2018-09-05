@@ -1,0 +1,23 @@
+{
+  "name": "intersvyaz/mqttviaws",
+  "description": "Работа с MQTT через WebSocket",
+  "version": "0.0.1-alpha",
+  "type": "library",
+  "license": "MIT",
+  "keywords": [
+    "mqtt",
+    "websocket"
+  ],
+  "authors": [
+    {
+      "name": "Andrievskiy Leonid",
+      "email": "and555a@is74.ru"
+    }
+  ],
+  "require": {
+    "php": ">=7.0.0"
+  },
+  "require-dev": {
+  },
+  "minimum-stability": "dev"
+}
