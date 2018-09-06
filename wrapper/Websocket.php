@@ -4,10 +4,7 @@ namespace Intersvyaz\MqttViaWS\wrapper;
 
 /**
  * Stream wrapper for websocket client
- * Supporting draft hybi-10.
  *
- * @author Sean Sullivan
- * @version 2011-10-18
  */
 class Websocket
 {
@@ -57,7 +54,7 @@ class Websocket
     /** @var string */
     public $errstr;
     /** @var float */
-    public $timeout;
+    public $timeout = 0;
     /** @var int */
     public $flags = STREAM_CLIENT_CONNECT;
     /** @var resource */
@@ -105,7 +102,6 @@ class Websocket
     private function _hybi10Encode($payload, $type = 'text', $masked = true)
     {
         $frameHead = array();
-        $frame = '';
         $payloadLength = strlen($payload);
         switch ($type) {
             case self::TYPE_TEXT:
@@ -153,17 +149,23 @@ class Websocket
         foreach (array_keys($frameHead) as $i) {
             $frameHead[$i] = chr($frameHead[$i]);
         }
+
         if ($masked === true) {
             // generate a random mask:
-            $mask = array();
+            $mask = [];
             for ($i = 0; $i < 4; $i++) {
                 $mask[$i] = chr(rand(0, 255));
             }
             $frameHead = array_merge($frameHead, $mask);
-        }
-        $frame = implode('', $frameHead);
-        for ($i = 0; $i < $payloadLength; $i++) {
-            $frame .= ($masked === true) ? $payload[$i] ^ $mask[$i % 4] : $payload[$i];
+            $frame = implode('', $frameHead);
+            for ($i = 0; $i < $payloadLength; $i++) {
+                $frame .= $payload[$i] ^ $mask[$i % 4];
+            }
+        } else {
+            $frame = implode('', $frameHead);
+            for ($i = 0; $i < $payloadLength; $i++) {
+                $frame .= $payload[$i];
+            }
         }
         return $frame;
     }
@@ -191,23 +193,19 @@ class Websocket
         $payloadLength = $hdr["b2"] & 0b01111111;
 
         if ($payloadLength >= 126) {
-            //В следующих 2 байтах - продолжение длинны пакета
-            //Если данных не хватает - доберем
-            if (strlen($data) < 2) {
-                $data .= fread($this->stream, 2 - strlen($data));
-            }
-            $hdr = unpack("nl1", $data);
-            $payloadLength = ($payloadLength << 16) + $hdr["l1"];
-            $data = substr($data, 2);
-
             if ($payloadLength == 127) {
-                //В следующих 6 байтах - продолжение длинны пакета
-                if (strlen($data) < 6) {
-                    $data .= fread($this->stream, 6 - strlen($data));
+                if (strlen($data) < 8) {
+                    $data .= fread($this->stream, 8 - strlen($data));
                 }
-                $hdr = unpack("Ns1/ns2", $data);
-                $payloadLength = ($payloadLength << 48) + ($hdr['s1'] << 16) + $hdr['s2'];
-                $data = substr($data, 6);
+                $payloadLength = hexdec(bin2hex($data));
+
+                $data = substr($data, 8);
+            } else {
+                if (strlen($data) < 2) {
+                    $data .= fread($this->stream, 2 - strlen($data));
+                }
+                $payloadLength = hexdec(bin2hex($data));
+                $data = substr($data, 2);
             }
         }
 
@@ -219,10 +217,16 @@ class Websocket
             $data = substr($data, 4);
         }
 
+        $nullNumber = 0;
         while (strlen($data) < $payloadLength) {
             if (!$buf = fread($this->stream, $payloadLength - strlen($data))) {
-                trigger_error('Читаем пустые данные', E_USER_ERROR);
-                die;
+                if ($nullNumber == 5) {
+                    trigger_error('Читаем пустые данные', E_USER_ERROR);
+                    die;
+                }
+
+                sleep(1);
+                $nullNumber++;
             }
             $data .= $buf;
         }
@@ -258,6 +262,45 @@ class Websocket
         return $this->_protocol . "://" . $this->_host . ":" . $this->_port . $this->_path;
     }
 
+    /**
+     * Создать новый поток по заданным параметрам
+     *
+     * @param string $url
+     * @return bool;
+     */
+    private function createStream($url)
+    {
+        if (!$this->context) {
+            $this->context = stream_context_create();
+        }
+
+        $this->stream = stream_socket_client(
+            $url,
+            $this->errno,
+            $this->errstr,
+            $this->timeout,
+            $this->flags,
+            $this->context
+        );
+
+        if (!$this->stream) {
+            error_log("Connection error:\t{$this->errno}:\t{$this->errstr}");
+            return false;
+        }
+
+        if (!stream_set_timeout($this->stream, $this->timeout)) {
+            error_log("Set timeout error:\t{$this->errno}:\t{$this->errstr}");
+            return false;
+        };
+
+//        if (!stream_set_blocking($this->stream, false)) {
+//            error_log("Set blocking error:\t{$this->errno}:\t{$this->errstr}");
+//            return false;
+//        };
+        return true;
+
+    }
+
     /** @inheritdoc */
     public function __construct()
     {
@@ -271,9 +314,17 @@ class Websocket
     }
 
     /**
+     * @param resource $newContext
+     */
+    public function setContext($newContext)
+    {
+        $this->context = $newContext;
+    }
+
+    /**
      * Получить данные
      *
-     * @return string
+     * @return bool|array
      */
     public function getData()
     {
@@ -281,11 +332,7 @@ class Websocket
             return false;
         }
 
-        if (!$frame = $this->_hybi10Decode($res)) {
-            return false;
-        }
-
-        return $frame;
+        return $this->_hybi10Decode($res);
     }
 
     /**
@@ -312,7 +359,11 @@ class Websocket
             return false;
         }
         if ($this->debugMode) {
-            echo 'sending: ' . $data . PHP_EOL;
+            if ($type == self::TYPE_TEXT) {
+                echo 'sending: ' . $data . PHP_EOL;
+            } else {
+                echo 'sending: ' . bin2hex($data) . PHP_EOL;
+            }
         }
         return true;
     }
@@ -349,27 +400,30 @@ class Websocket
             echo 'Connected to url: ' . $url . PHP_EOL;
         }
 
-        if ($this->context) {
-            $this->stream = stream_socket_client(
-                $url,
-                $this->errno,
-                $this->errstr,
-                $this->timeout,
-                $this->flags,
-                $this->context
-            );
-        } else {
-            $this->stream = stream_socket_client(
-                $url,
-                $this->errno,
-                $this->errstr,
-                $this->timeout,
-                $this->flags
-            );
+        if (!$this->createStream($url)) {
+            return false;
         }
-        if (!$this->stream) {
-            trigger_error($this->errno . ': ' . $this->errstr, E_USER_ERROR);
-            die;
+        return $this->connect();
+    }
+
+    /**
+     * Переподключиться
+     *
+     * @return bool
+     */
+    public function reopen()
+    {
+        if ($this->isConnected()) {
+            $this->disconnect();
+        }
+
+        $url = $this->getUrl();
+        if ($this->debugMode) {
+            echo 'Reconnected to url: ' . $url . PHP_EOL;
+        }
+
+        if (!$this->createStream($url)) {
+            return false;
         }
         return $this->connect();
     }
@@ -427,6 +481,14 @@ class Websocket
     /**
      * @return bool
      */
+    public function isConnected()
+    {
+        return $this->_connected;
+    }
+
+    /**
+     * @return bool
+     */
     public function checkConnection()
     {
         $this->_connected = false;
@@ -446,7 +508,7 @@ class Websocket
 
         $this->_connected = true;
         if ($this->debugMode) {
-            echo 'ping: Ok' . PHP_EOL;
+            echo 'WS ping: Ok' . PHP_EOL;
         }
         return true;
     }
@@ -461,16 +523,6 @@ class Websocket
     }
 
     /**
-     * Переподключиться
-     */
-    public function reconnect()
-    {
-        sleep(10);
-        $this->disconnect();
-        $this->connect();
-    }
-
-    /**
      * Открывает или URL
      *
      * @param string $path
@@ -479,7 +531,7 @@ class Websocket
      * @param string &$opened_path
      * @return bool
      */
-    public function stream_open($path, $mode, $options, $opened_path)
+    public function stream_open($path, $mode, $options, &$opened_path)
     {
         $contextParams = stream_context_get_options($this->context);
         if (isset($contextParams['ws'])) {
@@ -545,7 +597,10 @@ class Websocket
      */
     public function stream_cast($cast_as)
     {
-        return $this->stream ? $this->stream : false;
+        if ($cast_as == STREAM_CAST_FOR_SELECT || $cast_as == STREAM_CAST_AS_STREAM) {
+            return $this->stream ?? false;
+        }
+        return false;
     }
 
     /**
