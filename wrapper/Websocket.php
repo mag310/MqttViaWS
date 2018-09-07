@@ -54,9 +54,9 @@ class Websocket
     /** @var string */
     public $errstr;
     /** @var float */
-    public $timeout = 0;
+    public $timeout = 15;
     /** @var int */
-    public $flags = STREAM_CLIENT_CONNECT;
+    public $flags = STREAM_CLIENT_CONNECT | STREAM_CLIENT_PERSISTENT;
     /** @var resource */
     public $context; //Задается автоматически системой
 
@@ -300,6 +300,10 @@ class Websocket
 //            error_log("Set blocking error:\t{$this->errno}:\t{$this->errstr}");
 //            return false;
 //        };
+
+        if ($this->debugMode) {
+            echo 'Открыт новый поток' . PHP_EOL;
+        }
         return true;
 
     }
@@ -499,7 +503,7 @@ class Websocket
             return false;
         }
 
-        $data = $this->_hybi10Encode('ping?', 'ping', true);
+        $data = $this->_hybi10Encode('ping?', 'ping', false);
         if (strlen($data) !== fwrite($this->stream, $data, strlen($data))) {
             return false;
         }

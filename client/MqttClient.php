@@ -38,7 +38,7 @@ class MqttClient
     private $debugMode = false;
 
     /** @var int */
-    private $keepAlive = 10;        // default keepalive timer
+    private $keepAlive = 15;        // default keepalive timer
 
     /** @var string */
     private $clientId;
@@ -249,7 +249,7 @@ class MqttClient
             return false;
         }
 
-        return true;//$this->streamWrapper->disconnect();
+        return $this->streamWrapper->disconnect();
     }
 
     /**
@@ -315,13 +315,14 @@ class MqttClient
      */
     public function publish($topic, $content, $qos = 0, $dup = false, $retain = false)
     {
+        $this->msgId++;
 
         $packet = mqttPublishPacket::instance();
         $packet->tName = $topic;
         $packet->payload = $content;
         $packet->flags = ((int)$dup << 3) + ($qos << 1) + (int)$retain;
         if ($qos) {
-            $packet->id = $this->msgId++;
+            $packet->id = $this->msgId;
         }
 
         if (!$this->wrire($packet)) {
@@ -331,6 +332,7 @@ class MqttClient
         if ($qos == 1) {
             /** @var mqttPubackPacket $packet */
             $packet = $this->read();
+
             if ($packet->type != Mqtt::PACKET_PUBACK || $packet->id != $this->msgId) {
                 return false;
             }
@@ -375,10 +377,12 @@ class MqttClient
      */
     public function subscribe($topics)
     {
+        $this->msgId++;
+
         /** @var mqttSubscribePacket $packet */
         $packet = mqttSubscribePacket::instance();
 
-        $packet->id = $this->msgId++;
+        $packet->id = $this->msgId;
         $packet->topicFilters = $topics;
 
         if (!$this->wrire($packet)) {
@@ -387,9 +391,7 @@ class MqttClient
 
         /** @var mqttSubackPacket $packet */
         if (!$packet = $this->read()) {
-            var_dump($topics);
-            trigger_error('Ошибка при подписке!', E_USER_ERROR);
-            die;
+            return false;
         }
 
         if ($packet->type != Mqtt::PACKET_SUBACK) {
@@ -419,7 +421,7 @@ class MqttClient
         }
 
         if ($this->debugMode) {
-            echo 'Подписался на ' . count($topics) . ' топиков' . PHP_EOL;
+            echo 'Подписан на ' . count($this->topics) . ' топиков' . PHP_EOL;
         }
         return true;
     }

@@ -120,13 +120,13 @@ class Mqtt
                 /** @var mqttPublishPacket $packet */
                 $vHead = self::msbLsbCreate($packet->tName) . $packet->tName;
                 if ($packet->id) {
-                    $vHead .= self::msbLsbCreate($packet->id);
+                    $vHead .= self::msbLsbToIntCreate($packet->id);
                 }
                 $body = $vHead . $packet->payload;
                 break;
             case self::PACKET_SUBSCRIBE:
                 /** @var mqttSubscribePacket $packet */
-                $vHead = self::msbLsbCreate($packet->id);
+                $vHead = self::msbLsbToIntCreate($packet->id);
                 $payload = '';
                 foreach ($packet->topicFilters as $filter) {
                     if (!isset($filter['filter'])) {
@@ -190,6 +190,17 @@ class Mqtt
     private static function msbLsbCreate($str)
     {
         $len = strlen($str);
+        $msb = $len >> 8;
+        $lsb = $len % 256;
+        return chr($msb) . chr($lsb);
+    }
+
+    /**
+     * @param $str
+     * @return string
+     */
+    private static function msbLsbToIntCreate($len)
+    {
         $msb = $len >> 8;
         $lsb = $len % 256;
         return chr($msb) . chr($lsb);
