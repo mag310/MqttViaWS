@@ -219,7 +219,11 @@ class Websocket
 
         $nullNumber = 0;
         while (strlen($data) < $payloadLength) {
-            if (!$buf = fread($this->stream, $payloadLength - strlen($data))) {
+            if (!$size = (int)($payloadLength - strlen($data))) {
+                break;
+            }
+
+            if (!$buf = fread($this->stream, $size)) {
                 if ($nullNumber == 5) {
                     trigger_error('Читаем пустые данные', E_USER_ERROR);
                     die;
@@ -283,15 +287,14 @@ class Websocket
             $this->context
         );
 
-        if (!$this->stream) {
-            error_log("Connection error:\t{$this->errno}:\t{$this->errstr}");
-            return false;
+        if (!is_resource($this->stream)) {
+            trigger_error("Connection error:\t{$this->errno}:\t{$this->errstr}", E_USER_ERROR);
         }
-
-        if (!stream_set_timeout($this->stream, $this->timeout)) {
-            error_log("Set timeout error:\t{$this->errno}:\t{$this->errstr}");
-            return false;
-        };
+//
+//        if (!stream_set_timeout($this->stream, $this->timeout)) {
+//            error_log("Set timeout error:\t{$this->errno}:\t{$this->errstr}");
+//            return false;
+//        };
 
 //        if (!stream_set_blocking($this->stream, false)) {
 //            error_log("Set blocking error:\t{$this->errno}:\t{$this->errstr}");
@@ -413,8 +416,8 @@ class Websocket
      */
     public function reopen()
     {
-        if ($this->isConnected()) {
-            $this->disconnect();
+        if (!$this->disconnect()) {
+            trigger_error('Ошибка при отключении потока', E_USER_ERROR);
         }
 
         $url = $this->getUrl();
@@ -492,6 +495,10 @@ class Websocket
     public function checkConnection()
     {
         $this->_connected = false;
+        if (!is_resource($this->stream)) {
+            return false;
+        }
+
         $data = $this->_hybi10Encode('ping?', 'ping', true);
         if (strlen($data) !== fwrite($this->stream, $data, strlen($data))) {
             return false;
@@ -519,7 +526,11 @@ class Websocket
     public function disconnect()
     {
         $this->_connected = false;
-        is_resource($this->stream) and fclose($this->stream);
+        if (!is_resource($this->stream)) {
+            return true;
+        }
+
+        return fclose($this->stream);
     }
 
     /**
