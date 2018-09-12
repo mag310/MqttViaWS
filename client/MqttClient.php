@@ -120,11 +120,11 @@ class MqttClient
     private function send($data)
     {
         if (!$this->streamWrapper->isConnected()) {
-            trigger_error('Поток не подключен!', E_USER_ERROR);
+            error_log('Поток не подключен!', E_WARNING);
             return false;
         }
         if (!$this->streamWrapper->sendData($data, Websocket::TYPE_BINARY)) {
-            trigger_error('Ошибка при отправке!', E_USER_ERROR);
+            error_log('Ошибка при отправке!', E_WARNING);
             return false;
         }
         return true;
@@ -152,7 +152,7 @@ class MqttClient
         }
 
         if (!$response || $response['type'] !== Websocket::TYPE_BINARY) {
-            trigger_error('Некорректный ответ: ', E_USER_ERROR);
+            error_log('Некорректный ответ: ', E_WARNING);
             return false;
         }
         return $response['payload'];
@@ -214,18 +214,18 @@ class MqttClient
         $packet->password = $this->password;
 
         if (!$this->wrire($packet)) {
-            trigger_error('Ошибка при отправке заголовка!', E_USER_ERROR);
+            error_log('Ошибка при отправке заголовка!', E_WARNING);
             return false;
         }
         /** @var mqttConnackPacket $packet */
         $packet = $this->read();
 
         if ($packet->type !== Mqtt::PACKET_CONNACK) {
-            trigger_error('Получен не CONNACK пакет!', E_USER_ERROR);
+            error_log('Получен не CONNACK пакет!', E_WARNING);
             return false;
         }
         if ($packet->returnCode != mqttConnackPacket::CODE_ACCEPTED) {
-            trigger_error('Connected error: ' . $packet->returnCode, E_USER_ERROR);
+            error_log('Connected error: ' . $packet->returnCode, E_WARNING);
             return false;
         }
         if ($this->debugMode) {
@@ -249,7 +249,7 @@ class MqttClient
             return false;
         }
 
-        return $this->streamWrapper->disconnect();
+        return true;// $this->streamWrapper->disconnect();
     }
 
     /**
@@ -258,10 +258,8 @@ class MqttClient
     public function reopen()
     {
         //Проверим поток
-        if (!$this->streamWrapper->isConnected()) {
-            if (!$this->streamWrapper->reopen()) {
-                return false;
-            }
+        if (!$this->streamWrapper->reopen()) {
+            return false;
         }
 
         if (!$this->connect()) {
@@ -280,13 +278,6 @@ class MqttClient
     /* ping: sends a keep alive ping */
     public function ping()
     {
-        if (!$this->streamWrapper->checkConnection()) {
-            if ($this->debugMode) {
-                echo "WS ping: error" . PHP_EOL;
-            }
-            return false;
-        }
-
         $packet = mqttPingreqPacket::instance();
         if (!$this->wrire($packet)) {
             return false;
