@@ -99,7 +99,7 @@ class Mqtt
                 $vHead = self::msbLsbCreate($packet->protocolName) . $packet->protocolName;
                 $vHead .= chr($packet->protocolLevel);
                 $vHead .= chr($packet->connectFlags);
-                $vHead .= self::msbLsbCreate($packet->keepAlive);
+                $vHead .= self::msbLsbToIntCreate($packet->keepAlive);
 
                 $payload = self::msbLsbCreate($packet->clientId) . $packet->clientId;
                 if ($packet->willTopic) {

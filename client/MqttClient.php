@@ -38,7 +38,7 @@ class MqttClient
     private $debugMode = false;
 
     /** @var int */
-    private $keepAlive = 15;        // default keepalive timer
+    private $keepAlive = 0xffff;        // default keepalive timer
 
     /** @var string */
     private $clientId;
