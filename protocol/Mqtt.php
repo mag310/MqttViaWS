@@ -14,6 +14,7 @@ require_once __DIR__ . "/../packets/mqttPingreqPacket.php";
 require_once __DIR__ . "/../packets/mqttSubackPacket.php";
 require_once __DIR__ . "/../packets/mqttSubscribePacket.php";
 require_once __DIR__ . "/../packets/mqttUnsubackPacket.php";
+require_once __DIR__ . "/../packets/mqttUnsubscribePacket.php";
 
 use Intersvyaz\MqttViaWS\packet\mqttBasePacket;
 use Intersvyaz\MqttViaWS\packet\mqttConnackPacket;
@@ -73,6 +74,8 @@ class Mqtt
                 return mqttSubscribePacket::instance($response);
             case self::PACKET_SUBACK:
                 return mqttSubackPacket::instance($response);
+            case self::PACKET_UNSUBSCRIBE:
+                return mqttSubscribePacket::instance($response);
             case self::PACKET_UNSUBACK:
                 return mqttUnsubackPacket::instance($response);
             case self::PACKET_PINGREQ:
@@ -134,6 +137,19 @@ class Mqtt
                     }
                     $payload .= self::msbLsbCreate($filter['filter']) . $filter['filter'];
                     $payload .= chr($filter["qos"] ?? 0);
+                }
+
+                $body = $vHead . $payload;
+                break;
+                case self::PACKET_UNSUBSCRIBE:
+                /** @var mqttSubscribePacket $packet */
+                $vHead = self::msbLsbToIntCreate($packet->id);
+                $payload = '';
+                foreach ($packet->topicFilters as $filter) {
+                    if (!isset($filter['filter'])) {
+                        continue;
+                    }
+                    $payload .= self::msbLsbCreate($filter['filter']) . $filter['filter'];
                 }
 
                 $body = $vHead . $payload;

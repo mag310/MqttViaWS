@@ -16,6 +16,7 @@ use Intersvyaz\MqttViaWS\packet\mqttPublishPacket;
 use Intersvyaz\MqttViaWS\packet\mqttSubackPacket;
 use Intersvyaz\MqttViaWS\packet\mqttSubscribePacket;
 use Intersvyaz\MqttViaWS\packet\mqttUnsubackPacket;
+use Intersvyaz\MqttViaWS\packet\mqttUnsubscribePacket;
 use Intersvyaz\MqttViaWS\protocol\Mqtt;
 use Intersvyaz\MqttViaWS\wrapper\Websocket;
 
@@ -25,6 +26,44 @@ use Intersvyaz\MqttViaWS\wrapper\Websocket;
 
 class MqttClient
 {
+    /** @var null | callable */
+    public $sender = null;          //Функция, формирующая пакет на отправку
+
+    /** @var null | callable */
+    public $onConnected = null;
+
+    /** @var null | callable */
+    public $onPublish = null;
+
+    /** @var null | callable */
+    public $onDisconnect = null;
+
+    /** @var null | callable */
+    public $onPingResp = null;
+
+    /** @var null | callable */
+    public $onSubscribe = null;
+
+    /** @var null | callable */
+    public $onUnsubscribe = null;
+
+    /** @var bool */
+    public $blockedMode = false;
+
+    /**
+     * Ждем ответа от пингера
+     *
+     * @var bool
+     */
+    private $waitPing = false;
+
+    /**
+     * Статус установки соединения
+     *
+     * @var bool
+     */
+    private $isConnected = false;
+
     /** @var Websocket */
     private $streamWrapper;
 
@@ -32,13 +71,21 @@ class MqttClient
     private $msgId = 0;
 
     /** @var array */
-    private $topics;
+    public $topics;
+
+    /**
+     * @var mqttBasePacket[]
+     */
+    public $pakage = [];
 
     /** @var bool */
     private $debugMode = false;
 
     /** @var int */
-    private $keepAlive = 0xffff;        // default keepalive timer
+    public $keepAlive = 0xffff;        // default keepalive timer
+
+    /** @var int */
+    public $timeOut = 10;
 
     /** @var string */
     private $clientId;
@@ -57,6 +104,9 @@ class MqttClient
      */
     private function startTransaction()
     {
+        if ($this->blockedMode) {
+            return true;
+        }
         return $this->streamWrapper->stream_set_option(STREAM_OPTION_BLOCKING, true);
     }
 
@@ -65,67 +115,94 @@ class MqttClient
      */
     private function endTransaction()
     {
+        if ($this->blockedMode) {
+            return true;
+        }
         return $this->streamWrapper->stream_set_option(STREAM_OPTION_BLOCKING, false);
     }
 
     /**
-     * @param Websocket $newWrapper
-     */
-    public function setWrapper($newWrapper)
-    {
-        $this->disconnect();
-        $this->streamWrapper = $newWrapper;
-    }
-
-    /**
-     * @param string $newClientId
-     */
-    public function setClientId($newClientId)
-    {
-        $this->clientId = $newClientId;
-    }
-
-    /**
-     * @param bool $newMode
-     */
-    public function setDebug($newMode)
-    {
-        $this->debugMode = $newMode;
-    }
-
-    /**
-     * Подставляет кодированную длинну данных перед данными
+     * Обработка SUBAСK пакета
      *
-     * @param string $str
-     * @return string
+     * @param mqttSubackPacket $ackPacket
+     * @return bool
      */
-    private function strWriteString($str)
+    private function suback($ackPacket)
     {
-        $len = strlen($str);
-        $msb = $len >> 8;
-        $lsb = $len % 256;
-        return chr($msb) . chr($lsb) . $str;
-    }
+        if (
+            !isset($this->pakage[$ackPacket->id]) ||
+            !$this->pakage[$ackPacket->id] instanceof mqttSubscribePacket
+        ) {
+            return false;
+        }
 
-    /**
-     * Рассчет длинны сообщения
-     *
-     * @param string $data
-     * @return int
-     */
-    private function getRemainingLength($data)
-    {
-        $len = strlen($data);
-        $string = "";
-        do {
-            $digit = $len % 128;
-            $len = $len >> 7;
-            if ($len > 0) {
-                $digit = ($digit | 0x80);
+        /** @var mqttSubscribePacket $packet */
+        $packet = $this->pakage[$ackPacket->id];
+
+        reset($ackPacket->topics);
+        foreach ($packet->topicFilters as $topic) {
+            if (isset($this->topics[$topic['filter']])) {
+                $this->topics[$topic['filter']] = array_merge(
+                    $this->topics[$topic['filter']],
+                    current($ackPacket->topics)
+                );
+            } else {
+                $this->topics[$topic['filter']] = current($ackPacket->topics);
+                $this->topics[$topic['filter']]['filter'] = $topic['filter'];
             }
-            $string .= chr($digit);
-        } while ($len > 0);
-        return $string;
+
+            if (next($ackPacket->topics) === false) {
+                break;
+            }
+        }
+        unset($this->pakage[$ackPacket->id]);
+
+        return true;
+    }
+
+    /***
+     * @param mqttUnsubackPacket $ackPacket
+     * @return bool
+     */
+    private function unsuback($ackPacket)
+    {
+        if (
+            !isset($this->pakage[$ackPacket->id]) ||
+            !$this->pakage[$ackPacket->id] instanceof mqttUnsubscribePacket
+        ) {
+            return false;
+        }
+
+        /** @var mqttUnsubscribePacket $packet */
+        $packet = $this->pakage[$ackPacket->id];
+
+        foreach ($packet->topicFilters as $topic) {
+            if (isset($this->topics[$topic['filter']])) {
+                unset($this->topics[$topic['filter']]);
+            }
+        }
+        unset($this->pakage[$ackPacket->id]);
+
+        return true;
+    }
+
+    /**
+     * обработка PUBACK пакета
+     *
+     * @param mqttPubackPacket $ackPacket
+     * @return bool
+     */
+    private function pubask($ackPacket)
+    {
+        if (
+            !isset($this->pakage[$ackPacket->id]) ||
+            !$this->pakage[$ackPacket->id] instanceof mqttPublishPacket
+        ) {
+            return false;
+        }
+
+        unset($this->pakage[$ackPacket->id]);
+        return true;
     }
 
     /**
@@ -177,6 +254,70 @@ class MqttClient
         return $response['payload'];
     }
 
+
+    /**
+     * @return bool
+     */
+    private function connect()
+    {
+        if (!$this->streamWrapper->isConnected()) {
+            trigger_error('Поток не подключен!', E_USER_ERROR);
+            return false;
+        }
+
+        $packet = mqttConnectPacket::instance();
+        $packet->connectFlags =
+            ((empty($this->username) ? 0 : 1) << 7) +
+            ((empty($this->password) ? 0 : 1) << 6) +
+            ((empty($this->will['retain']) ? 0 : 1) << 5) +
+            ((empty($this->will['qos']) ? 0 : $this->will['qos']) << 3) +
+            ((empty($this->will) ? 0 : 1) << 2) +
+            ($this->clean << 1);
+
+        $packet->keepAlive = $this->keepAlive;
+        $packet->clientId = $this->clientId;
+
+        if (!is_null($this->will)) {
+            $packet->willTopic = $this->will['topic'];
+            $packet->willMessage = $this->will['message'];
+        }
+
+        $packet->username = $this->username;
+        $packet->password = $this->password;
+
+        if (!$this->wrire($packet)) {
+            error_log('Ошибка при отправке заголовка!', E_WARNING);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param Websocket $newWrapper
+     */
+    public function setWrapper($newWrapper)
+    {
+        $this->disconnect();
+        $this->streamWrapper = $newWrapper;
+    }
+
+    /**
+     * @param string $newClientId
+     */
+    public function setClientId($newClientId)
+    {
+        $this->clientId = $newClientId;
+    }
+
+    /**
+     * @param bool $newMode
+     */
+    public function setDebug($newMode)
+    {
+        $this->debugMode = $newMode;
+    }
+
     /**
      * Деструктор
      */
@@ -205,61 +346,6 @@ class MqttClient
     /**
      * @return bool
      */
-    private function connect()
-    {
-        if (!$this->streamWrapper->isConnected()) {
-            trigger_error('Поток не подключен!', E_USER_ERROR);
-            return false;
-        }
-
-        $this->startTransaction();
-        $packet = mqttConnectPacket::instance();
-        $packet->connectFlags =
-            ((empty($this->username) ? 0 : 1) << 7) +
-            ((empty($this->password) ? 0 : 1) << 6) +
-            ((empty($this->will['retain']) ? 0 : 1) << 5) +
-            ((empty($this->will['qos']) ? 0 : $this->will['qos']) << 3) +
-            ((empty($this->will) ? 0 : 1) << 2) +
-            ($this->clean << 1);
-
-        $packet->keepAlive = $this->keepAlive;
-        $packet->clientId = $this->clientId;
-
-        if (!is_null($this->will)) {
-            $packet->willTopic = $this->will['topic'];
-            $packet->willMessage = $this->will['message'];
-        }
-
-        $packet->username = $this->username;
-        $packet->password = $this->password;
-
-        if (!$this->wrire($packet)) {
-            error_log('Ошибка при отправке заголовка!', E_WARNING);
-            return false;
-        }
-        /** @var mqttConnackPacket $packet */
-        $packet = $this->read();
-
-        $this->endTransaction();
-
-        if ($packet->type !== Mqtt::PACKET_CONNACK) {
-            error_log('Получен не CONNACK пакет!', E_WARNING);
-            return false;
-        }
-        if ($packet->returnCode != mqttConnackPacket::CODE_ACCEPTED) {
-            error_log('Connected error: ' . $packet->returnCode, E_WARNING);
-            return false;
-        }
-        if ($this->debugMode) {
-            echo "Connected to Broker\n";
-        }
-
-        return true;
-    }
-
-    /**
-     * @return bool
-     */
     public function disconnect()
     {
         if (!$this->streamWrapper || !$this->streamWrapper->isConnected()) {
@@ -271,7 +357,7 @@ class MqttClient
             return false;
         }
 
-        return true;// $this->streamWrapper->disconnect();
+        return true;
     }
 
     /**
@@ -279,6 +365,8 @@ class MqttClient
      */
     public function reopen()
     {
+        $this->waitPing = false;
+
         //Проверим поток
         if (!$this->streamWrapper->reopen()) {
             return false;
@@ -288,8 +376,9 @@ class MqttClient
             return false;
         }
 
-        if ($this->topics) {
-            if (!$this->subscribe($this->topics)) {
+        if (!empty($this->topics)) {
+            $packet = $this->createSubscribePacket($this->topics);
+            if ($this->wrire($packet)) {
                 return false;
             }
         }
@@ -300,25 +389,12 @@ class MqttClient
     /* ping: sends a keep alive ping */
     public function ping()
     {
+        if ($this->waitPing) {
+            return false;
+        }
+
         $packet = mqttPingreqPacket::instance();
-        $this->startTransaction();
-
-        if (!$this->wrire($packet)) {
-            return false;
-        }
-
-        /** @var mqttPingrespPacket */
-        if (!$packet = $this->read()) {
-            return false;
-        }
-
-        $res = $packet->type == Mqtt::PACKET_PINGRESP;
-        if ($this->debugMode) {
-            echo "MQTT ping " . ($res ? 'OK' : 'Error') . PHP_EOL;
-        }
-
-        $this->endTransaction();
-        return $res;
+        return $this->wrire($packet);
     }
 
     /**
@@ -327,49 +403,24 @@ class MqttClient
      * @param int $qos
      * @param bool $dup Пакет ранее уже отправлялся
      * @param bool $retain
-     * @return bool
+     * @return mqttPublishPacket
      */
-    public function publish($topic, $content, $qos = 0, $dup = false, $retain = false)
+    public function createPublishPacket($topic, $content, $qos = 0, $dup = false, $retain = false)
     {
-        $this->msgId++;
-
         $packet = mqttPublishPacket::instance();
         $packet->tName = $topic;
         $packet->payload = $content;
         $packet->flags = ((int)$dup << 3) + ($qos << 1) + (int)$retain;
         if ($qos) {
+            $this->msgId++;
             $packet->id = $this->msgId;
+            $this->pakage[$packet->id] = $packet;
         }
-
-        if ($qos) {
-            $this->startTransaction();
-        }
-
-        if (!$this->wrire($packet)) {
-            return false;
-        }
-
-        if ($qos == 1) {
-            /** @var mqttPubackPacket $packet */
-            $packet = $this->read();
-
-            if ($packet->type != Mqtt::PACKET_PUBACK || $packet->id != $this->msgId) {
-                return false;
-            }
-        } elseif ($qos == 2) { //PUBREC
-            trigger_error('Пока не реализовано!', E_USER_ERROR);
-            return false;
-        }
-        if ($qos) {
-            $this->endTransaction();
-        }
-
-        return true;
-
+        return $packet;
     }
 
     /**
-     * @return mixed
+     * @return mqttBasePacket | null | bool
      */
     public function read()
     {
@@ -389,16 +440,19 @@ class MqttClient
      */
     public function wrire($packet)
     {
+        if (!$this->isConnected && $packet->type != Mqtt::PACKET_CONNECT) {
+            return false;
+        }
+
         $data = Mqtt::packetToString($packet);
         return $this->send($data);
     }
 
-    /* subscribe: subscribes to topics */
     /**
      * @param array $topics
-     * @return bool
+     * @return mqttSubscribePacket
      */
-    public function subscribe($topics)
+    public function createSubscribePacket($topics)
     {
         $this->msgId++;
 
@@ -408,87 +462,132 @@ class MqttClient
         $packet->id = $this->msgId;
         $packet->topicFilters = $topics;
 
-        $this->startTransaction();
-
-        if (!$this->wrire($packet)) {
-            return false;
-        }
-
-        /** @var mqttSubackPacket $packet */
-        if (!$packet = $this->read()) {
-            return false;
-        }
-
-        $this->endTransaction();
-
-        if ($packet->type != Mqtt::PACKET_SUBACK) {
-            return false;
-        }
-
-        if ($packet->id != $this->msgId) {
-            return false;
-        }
-
-        //Число и порядок топиков и строк в ответе должно совпадать
-        reset($packet->topics);
-        foreach ($topics as $topic) {
-            if (isset($this->topics[$topic['filter']])) {
-                $this->topics[$topic['filter']] = array_merge(
-                    $this->topics[$topic['filter']],
-                    current($packet->topics)
-                );
-            } else {
-                $this->topics[$topic['filter']] = current($packet->topics);
-                $this->topics[$topic['filter']]['filter'] = $topic['filter'];
-            }
-
-            if (next($packet->topics) === false) {
-                break;
-            }
-        }
-
-        if ($this->debugMode) {
-            echo 'Подписан на ' . count($this->topics) . ' топиков' . PHP_EOL;
-        }
-        return true;
+        $this->pakage[$this->msgId] = $packet;
+        return $packet;
     }
 
-    public function unsubscribe($topics, $qos = 0)
+    /**
+     * @param array $topics
+     * @return mqttUnsubscribePacket
+     */
+    public function createUnsubscribePacket($topics)
     {
         $this->msgId++;
-        $body = chr($this->msgId >> 8);
-        $body .= chr($this->msgId % 256);
-        foreach ($topics as $num => $topic) {
-            $body .= $this->strWriteString($topic['name']);
-        }
+        $packet = mqttUnsubscribePacket::instance();
 
-        $head = "\xa2";
-        $head .= $this->getRemainingLength($body);
+        $packet->id = $this->msgId;
+        $packet->topicFilters = $topics;
 
-        $this->startTransaction();
-
-        if (!$this->send($head . $body)) {
-            return false;
-        }
-
-        /** @var mqttUnsubackPacket $packet */
-        $packet = $this->read();
-
-        $this->endTransaction();
-
-        if (!$packet->type = Mqtt::PACKET_UNSUBACK) {
-            return false;
-        }
-
-        if ($packet->id != $this->msgId) {
-            return false;
-        }
-
-        foreach ($topics as $num => $topic) {
-            unset($this->topics[$num]);
-        }
-
-        return true;
+        $this->pakage[$this->msgId] = $packet;
+        return $packet;
     }
 
+    /**
+     *  Основная петля
+     */
+    public function run()
+    {
+        while (true) {
+            if (!$this->blockedMode) {
+                $this->streamWrapper->stream_set_option(STREAM_OPTION_BLOCKING, false);
+            }
+
+            $startTime = microtime(true);
+
+            if (!$this->blockedMode) {
+                while (!$res = $this->read()) {
+
+                    if (is_callable($this->sender) && $packet = call_user_func($this->sender, $this)) {
+                        if ($this->wrire($packet)) {
+                            $startTime = microtime(true);
+                        }
+                    } elseif (microtime(true) - $startTime > $this->timeOut) {
+                        while (!$this->ping()) {
+                            if (microtime(true) - $startTime > $this->keepAlive) {
+                                trigger_error('TimeOut error');
+                            }
+                            if ($this->debugMode) {
+                                echo 'Ping error' . PHP_EOL;
+                            }
+                            sleep($this->timeOut);
+                            $this->reopen();
+                        }
+
+                        $startTime = microtime(true);
+                    }
+                }
+
+            } else {
+                $res = $this->read();
+            }
+
+            if (!$res) {
+                continue;
+            }
+
+            switch ($res->type) {
+                case Mqtt::PACKET_CONNACK:
+                    /** @var mqttConnackPacket $res */
+                    if ($res->returnCode != mqttConnackPacket::CODE_ACCEPTED) {
+                        error_log('Connected error: ' . $res->returnCode, E_WARNING);
+                        return false;
+                    }
+
+                    $this->isConnected = true;
+
+                    if (is_callable($this->onConnected)) {
+                        call_user_func($this->onConnected, $res);
+                    }
+                    break;
+                case Mqtt::PACKET_PUBLISH:
+                    if (is_callable($this->onPublish)) {
+                        call_user_func($this->onPublish, $res);
+                    }
+                    break;
+                case Mqtt::PACKET_PINGRESP:
+                    $this->waitPing = false;
+
+                    if (is_callable($this->onPingResp)) {
+                        call_user_func($this->onPingResp, $res);
+                    }
+                    break;
+                case Mqtt::PACKET_DISCONNECT:
+                    if (is_callable($this->onDisconnect)) {
+                        call_user_func($this->onDisconnect, $res);
+                    }
+                    $this->disconnect();
+                    return false;
+                case Mqtt::PACKET_SUBACK:
+                    /** @var mqttSubackPacket $res */
+                    if (!$this->suback($res)) {
+                        $res = false;
+                    }
+
+                    if (is_callable($this->onSubscribe)) {
+                        call_user_func($this->onSubscribe, $res);
+                    }
+                    break;
+                case Mqtt::PACKET_UNSUBACK:
+                    /** @var mqttUnsubackPacket $res */
+                    if (!$this->unsuback($res)) {
+                        $res = false;
+                    }
+
+                    if (is_callable($this->onUnsubscribe)) {
+                        call_user_func($this->onUnsubscribe, $res);
+                    }
+                    break;
+                case Mqtt::PACKET_PUBACK:
+                    /** @var mqttPubackPacket $res */
+                    if (!$this->pubask($res)) {
+                        $res = false;
+                    }
+
+                    if (is_callable($this->onPublish)) {
+                        call_user_func($this->onPublish, $res);
+                    }
+                    break;
+            }
+        }
+    }
 }
