@@ -54,9 +54,10 @@ class Websocket
     /** @var string */
     public $errstr;
     /** @var float */
-    public $timeout = 15;
+    public $timeout = 1;
     /** @var int */
-    public $flags = STREAM_CLIENT_CONNECT | STREAM_CLIENT_PERSISTENT;
+//    public $flags = STREAM_CLIENT_CONNECT | STREAM_CLIENT_PERSISTENT;
+    public $flags = STREAM_CLIENT_ASYNC_CONNECT | STREAM_CLIENT_PERSISTENT;
     /** @var resource */
     public $context; //Задается автоматически системой
 
@@ -282,7 +283,7 @@ class Websocket
             $url,
             $this->errno,
             $this->errstr,
-            $this->timeout,
+            15,
             $this->flags,
             $this->context
         );
@@ -290,11 +291,11 @@ class Websocket
         if (!is_resource($this->stream)) {
             trigger_error("Connection error:\t{$this->errno}:\t{$this->errstr}", E_USER_ERROR);
         }
-//
-//        if (!stream_set_timeout($this->stream, $this->timeout)) {
-//            error_log("Set timeout error:\t{$this->errno}:\t{$this->errstr}");
-//            return false;
-//        };
+
+        if (!stream_set_timeout($this->stream, $this->timeout)) {
+            error_log("Set timeout error:\t{$this->errno}:\t{$this->errstr}");
+            return false;
+        };
 
 //        if (!stream_set_blocking($this->stream, false)) {
 //            error_log("Set blocking error:\t{$this->errno}:\t{$this->errstr}");
@@ -479,8 +480,13 @@ class Websocket
 
             $this->_connected = ($keyAccept === $expectedResonse) ? true : false;
         }
+
         if ($this->debugMode) {
-            echo 'connect: ' . ($this->_connected ? 'Ok' : 'Error') . PHP_EOL;
+            if ($this->_connected) {
+                echo 'WS connect: Ok' . PHP_EOL;
+            } else {
+                trigger_error("Connection error:\t{$this->errno}:\t{$this->errstr}", E_USER_ERROR);
+            }
         }
         return $this->_connected;
     }
@@ -636,7 +642,7 @@ class Websocket
      * @param int $arg2
      * @return bool
      */
-    public function stream_set_option($option, $arg1, $arg2)
+    public function stream_set_option($option, $arg1, $arg2 = null)
     {
         switch ($option) {
             case STREAM_OPTION_BLOCKING:

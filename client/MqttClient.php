@@ -52,6 +52,21 @@ class MqttClient
     /** @var string */
     private $password;
 
+    /**
+     * Переводим поток в блокирующий режим
+     */
+    private function startTransaction()
+    {
+        return $this->streamWrapper->stream_set_option(STREAM_OPTION_BLOCKING, true);
+    }
+
+    /**
+     * Переводим поток в неблокирующий режим
+     */
+    private function endTransaction()
+    {
+        return $this->streamWrapper->stream_set_option(STREAM_OPTION_BLOCKING, false);
+    }
 
     /**
      * @param Websocket $newWrapper
@@ -151,7 +166,11 @@ class MqttClient
             return false;
         }
 
-        if (!$response || $response['type'] !== Websocket::TYPE_BINARY) {
+        if (!$response) {
+            return false;
+        }
+
+        if ($response['type'] !== Websocket::TYPE_BINARY) {
             error_log('Некорректный ответ: ', E_WARNING);
             return false;
         }
@@ -193,6 +212,7 @@ class MqttClient
             return false;
         }
 
+        $this->startTransaction();
         $packet = mqttConnectPacket::instance();
         $packet->connectFlags =
             ((empty($this->username) ? 0 : 1) << 7) +
@@ -219,6 +239,8 @@ class MqttClient
         }
         /** @var mqttConnackPacket $packet */
         $packet = $this->read();
+
+        $this->endTransaction();
 
         if ($packet->type !== Mqtt::PACKET_CONNACK) {
             error_log('Получен не CONNACK пакет!', E_WARNING);
@@ -279,6 +301,8 @@ class MqttClient
     public function ping()
     {
         $packet = mqttPingreqPacket::instance();
+        $this->startTransaction();
+
         if (!$this->wrire($packet)) {
             return false;
         }
@@ -293,6 +317,7 @@ class MqttClient
             echo "MQTT ping " . ($res ? 'OK' : 'Error') . PHP_EOL;
         }
 
+        $this->endTransaction();
         return $res;
     }
 
@@ -316,6 +341,10 @@ class MqttClient
             $packet->id = $this->msgId;
         }
 
+        if ($qos) {
+            $this->startTransaction();
+        }
+
         if (!$this->wrire($packet)) {
             return false;
         }
@@ -330,6 +359,9 @@ class MqttClient
         } elseif ($qos == 2) { //PUBREC
             trigger_error('Пока не реализовано!', E_USER_ERROR);
             return false;
+        }
+        if ($qos) {
+            $this->endTransaction();
         }
 
         return true;
@@ -376,6 +408,8 @@ class MqttClient
         $packet->id = $this->msgId;
         $packet->topicFilters = $topics;
 
+        $this->startTransaction();
+
         if (!$this->wrire($packet)) {
             return false;
         }
@@ -384,6 +418,8 @@ class MqttClient
         if (!$packet = $this->read()) {
             return false;
         }
+
+        $this->endTransaction();
 
         if ($packet->type != Mqtt::PACKET_SUBACK) {
             return false;
@@ -429,12 +465,16 @@ class MqttClient
         $head = "\xa2";
         $head .= $this->getRemainingLength($body);
 
+        $this->startTransaction();
+
         if (!$this->send($head . $body)) {
             return false;
         }
 
         /** @var mqttUnsubackPacket $packet */
         $packet = $this->read();
+
+        $this->endTransaction();
 
         if (!$packet->type = Mqtt::PACKET_UNSUBACK) {
             return false;
