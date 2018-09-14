@@ -20,6 +20,9 @@ class Websocket
     private $debugMode = false;
 
     /** @var string */
+    private $mode;
+
+    /** @var string */
     private $buffer = '';
     /** @var string */
     private $_protocol;
@@ -332,11 +335,16 @@ class Websocket
     /**
      * Получить данные
      *
+     * @param int $count
      * @return bool|array
      */
-    public function getData()
+    public function getData($count = null)
     {
-        if (!$res = fread($this->stream, 2)) {
+        if (is_null($count)) {
+            $count = 2;
+        }
+
+        if (!$res = fread($this->stream, $count)) {
             return false;
         }
 
@@ -561,15 +569,18 @@ class Websocket
             $params = [];
         }
 
-        if ($mode & self::MODE_DEBUG) {
-            $params['debug'] = true;
-        }
+        $this->mode = $mode;
 
         $res = $this->open($path, $params);
         if ($res && ($options & STREAM_USE_PATH)) {
             $opened_path = $this->getUrl();
         }
         return $res;
+    }
+
+    public function stream_close()
+    {
+        $this->disconnect();
     }
 
     /**
@@ -580,11 +591,7 @@ class Websocket
      */
     public function stream_write($data)
     {
-        if (!$this->checkConnection()) {
-            return false;
-        }
-
-        if ($this->sendData($data)) {
+        if ($this->sendData($data, $this->mode)) {
             return strlen($data);
         }
         return false;
@@ -593,11 +600,25 @@ class Websocket
     /**
      * Читает из потока
      *
+     * @param int $count
      * @return string
      */
-    public function stream_read()
+    public function stream_read($count)
     {
-        return $this->getData();
+        if (!$res = $this->getData()) {
+            return false;
+        }
+
+        if (!is_array($res)) {
+            return false;
+        }
+
+        if ($res['type'] == Websocket::TYPE_CLOSE) {
+            $this->disconnect();
+            return false;
+        }
+
+        return $res['payload'] ?? false;
     }
 
     /**
@@ -607,6 +628,9 @@ class Websocket
      */
     public function stream_eof()
     {
+        if (!$this->isConnected()) {
+            return false;
+        }
         return feof($this->stream);
     }
 

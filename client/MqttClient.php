@@ -64,8 +64,8 @@ class MqttClient
      */
     private $isConnected = false;
 
-    /** @var Websocket */
-    private $streamWrapper;
+    /** @var resource */
+    private $stream;
 
     /** @var int */
     private $msgId = 0;
@@ -98,28 +98,6 @@ class MqttClient
     private $username;
     /** @var string */
     private $password;
-
-    /**
-     * Переводим поток в блокирующий режим
-     */
-    private function startTransaction()
-    {
-        if ($this->blockedMode) {
-            return true;
-        }
-        return $this->streamWrapper->stream_set_option(STREAM_OPTION_BLOCKING, true);
-    }
-
-    /**
-     * Переводим поток в неблокирующий режим
-     */
-    private function endTransaction()
-    {
-        if ($this->blockedMode) {
-            return true;
-        }
-        return $this->streamWrapper->stream_set_option(STREAM_OPTION_BLOCKING, false);
-    }
 
     /**
      * Обработка SUBAСK пакета
@@ -211,11 +189,7 @@ class MqttClient
      */
     private function send($data)
     {
-        if (!$this->streamWrapper->isConnected()) {
-            error_log('Поток не подключен!', E_WARNING);
-            return false;
-        }
-        if (!$this->streamWrapper->sendData($data, Websocket::TYPE_BINARY)) {
+        if (!$res = fwrite($this->stream, $data)) {
             error_log('Ошибка при отправке!', E_WARNING);
             return false;
         }
@@ -227,31 +201,14 @@ class MqttClient
      */
     private function get()
     {
-        if (!$this->streamWrapper->isConnected()) {
-            trigger_error('Поток не подключен!', E_USER_ERROR);
-            return false;
-        }
+        $response = fread($this->stream, 4096);
 
-        $response = $this->streamWrapper->getData();
-
-        if ($response && $response['type'] == Websocket::TYPE_CLOSE) {
+        if ($response === false) {
             $this->disconnect();
-            $this->streamWrapper->disconnect();
-            if ($this->debugMode) {
-                echo 'WS соединение закрыто' . PHP_EOL;
-            }
             return false;
         }
 
-        if (!$response) {
-            return false;
-        }
-
-        if ($response['type'] !== Websocket::TYPE_BINARY) {
-            error_log('Некорректный ответ: ', E_WARNING);
-            return false;
-        }
-        return $response['payload'];
+        return $response;
     }
 
 
@@ -260,11 +217,6 @@ class MqttClient
      */
     private function connect()
     {
-        if (!$this->streamWrapper->isConnected()) {
-            trigger_error('Поток не подключен!', E_USER_ERROR);
-            return false;
-        }
-
         $packet = mqttConnectPacket::instance();
         $packet->connectFlags =
             ((empty($this->username) ? 0 : 1) << 7) +
@@ -291,15 +243,6 @@ class MqttClient
         }
 
         return true;
-    }
-
-    /**
-     * @param Websocket $newWrapper
-     */
-    public function setWrapper($newWrapper)
-    {
-        $this->disconnect();
-        $this->streamWrapper = $newWrapper;
     }
 
     /**
@@ -333,12 +276,36 @@ class MqttClient
      * @param string $password
      * @return bool
      */
-    public function open($clean = true, $will = null, $username = null, $password = null)
+    public function open($url, $params = [])
     {
-        $this->clean = $clean;
-        $this->will = $will;
-        $this->username = $username;
-        $this->password = $password;
+        $this->clean = $params['clean'] ?? true;
+        $this->will = $params['will'] ?? null;
+        $this->username = $params['username'] ?? null;
+        $this->password = $params['password'] ?? null;
+
+
+        if (strpos($url, 'tcp:') === 0) {
+            $this->stream = stream_socket_client(
+                $url,
+                $errno,
+                $errstr,
+                15,
+                STREAM_CLIENT_ASYNC_CONNECT | STREAM_CLIENT_PERSISTENT
+            );
+        } elseif (strpos($url, 'ws') === 0) {
+            $context = stream_context_create([
+                'ws' => [
+                    'debug' => $this->debugMode,
+                    'Origin' => 'mqtt-client://' . $this->clientId,
+                    'Version' => 13,
+                    'Protocol' => 'mqtt',
+                ]
+            ]);
+            $this->stream = fopen($url, Websocket::TYPE_BINARY, false, $context);
+        } else {
+            $this->stream = fopen($url, 'rw+');
+        }
+
 
         return $this->connect();
     }
@@ -348,7 +315,7 @@ class MqttClient
      */
     public function disconnect()
     {
-        if (!$this->streamWrapper || !$this->streamWrapper->isConnected()) {
+        if (!is_resource($this->stream)) {
             return true;
         }
 
@@ -356,7 +323,10 @@ class MqttClient
         if (!$this->wrire($packet)) {
             return false;
         }
-
+        if (is_resource($this->stream)) {
+            fclose($this->stream);
+        }
+        $this->isConnected = false;
         return true;
     }
 
@@ -368,7 +338,7 @@ class MqttClient
         $this->waitPing = false;
 
         //Проверим поток
-        if (!$this->streamWrapper->reopen()) {
+        if (!$this->disconnect()) {
             return false;
         }
 
@@ -489,7 +459,7 @@ class MqttClient
     {
         while (true) {
             if (!$this->blockedMode) {
-                $this->streamWrapper->stream_set_option(STREAM_OPTION_BLOCKING, false);
+                stream_set_blocking($this->stream, false);
             }
 
             $startTime = microtime(true);
@@ -522,6 +492,10 @@ class MqttClient
             }
 
             if (!$res) {
+                continue;
+            }
+
+            if (!$this->isConnected && $res->type !== Mqtt::PACKET_CONNACK) {
                 continue;
             }
 

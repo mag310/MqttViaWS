@@ -34,7 +34,6 @@ class mqttConnackPacket extends mqttBasePacket
         if (empty($response)) {
             return $packet;
         }
-
         $len = unpack("Cb1/Cb2", $response);
         $packet->flags = $len['b1'] & 0b00001111;
         $packet->remainingLength = $len['b2'];
