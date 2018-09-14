@@ -2,7 +2,6 @@
 
 namespace Intersvyaz\MqttViaWS\packet;
 
-require_once __DIR__ . '/../protocol/Mqtt.php';
 
 use Intersvyaz\MqttViaWS\protocol\Mqtt;
 

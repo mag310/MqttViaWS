@@ -2,19 +2,18 @@
 
 namespace Intersvyaz\MqttViaWS\protocol;
 
-require_once __DIR__ . "/../packets/basePacket.php";
-require_once __DIR__ . "/../packets/mqttBasePacket.php";
-require_once __DIR__ . "/../packets/mqttConnectPacket.php";
-require_once __DIR__ . "/../packets/mqttConnackPacket.php";
-require_once __DIR__ . "/../packets/mqttDisconnectPacket.php";
-require_once __DIR__ . "/../packets/mqttPublishPacket.php";
-require_once __DIR__ . "/../packets/mqttPubackPacket.php";
-require_once __DIR__ . "/../packets/mqttPingrespPacket.php";
-require_once __DIR__ . "/../packets/mqttPingreqPacket.php";
-require_once __DIR__ . "/../packets/mqttSubackPacket.php";
-require_once __DIR__ . "/../packets/mqttSubscribePacket.php";
-require_once __DIR__ . "/../packets/mqttUnsubackPacket.php";
-require_once __DIR__ . "/../packets/mqttUnsubscribePacket.php";
+require_once "packets/mqttBasePacket.php";
+require_once "packets/mqttConnectPacket.php";
+require_once "packets/mqttConnackPacket.php";
+require_once "packets/mqttDisconnectPacket.php";
+require_once "packets/mqttPublishPacket.php";
+require_once "packets/mqttPubackPacket.php";
+require_once "packets/mqttPingrespPacket.php";
+require_once "packets/mqttPingreqPacket.php";
+require_once "packets/mqttSubackPacket.php";
+require_once "packets/mqttSubscribePacket.php";
+require_once "packets/mqttUnsubackPacket.php";
+require_once "packets/mqttUnsubscribePacket.php";
 
 use Intersvyaz\MqttViaWS\packet\mqttBasePacket;
 use Intersvyaz\MqttViaWS\packet\mqttConnackPacket;
@@ -141,7 +140,7 @@ class Mqtt
 
                 $body = $vHead . $payload;
                 break;
-                case self::PACKET_UNSUBSCRIBE:
+            case self::PACKET_UNSUBSCRIBE:
                 /** @var mqttSubscribePacket $packet */
                 $vHead = self::msbLsbToIntCreate($packet->id);
                 $payload = '';

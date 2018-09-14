@@ -2,7 +2,6 @@
 
 namespace Intersvyaz\MqttViaWS\packet;
 
-require_once __DIR__ . '/../protocol/Mqtt.php';
 
 use Intersvyaz\MqttViaWS\protocol\Mqtt;
 
@@ -13,6 +12,7 @@ class mqttUnsubscribePacket extends mqttBasePacket
 
     /** @var array */
     public $topicFilters;
+
     /**
      * @param string $response
      * @return static

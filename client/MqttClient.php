@@ -398,28 +398,6 @@ class MqttClient
     }
 
     /**
-     * @param string $topic
-     * @param string $content
-     * @param int $qos
-     * @param bool $dup Пакет ранее уже отправлялся
-     * @param bool $retain
-     * @return mqttPublishPacket
-     */
-    public function createPublishPacket($topic, $content, $qos = 0, $dup = false, $retain = false)
-    {
-        $packet = mqttPublishPacket::instance();
-        $packet->tName = $topic;
-        $packet->payload = $content;
-        $packet->flags = ((int)$dup << 3) + ($qos << 1) + (int)$retain;
-        if ($qos) {
-            $this->msgId++;
-            $packet->id = $this->msgId;
-            $this->pakage[$packet->id] = $packet;
-        }
-        return $packet;
-    }
-
-    /**
      * @return mqttBasePacket | null | bool
      */
     public function read()
@@ -446,6 +424,28 @@ class MqttClient
 
         $data = Mqtt::packetToString($packet);
         return $this->send($data);
+    }
+
+    /**
+     * @param string $topic
+     * @param string $content
+     * @param int $qos
+     * @param bool $dup Пакет ранее уже отправлялся
+     * @param bool $retain
+     * @return mqttPublishPacket
+     */
+    public function createPublishPacket($topic, $content, $qos = 0, $dup = false, $retain = false)
+    {
+        $packet = mqttPublishPacket::instance();
+        $packet->tName = $topic;
+        $packet->payload = $content;
+        $packet->flags = ((int)$dup << 3) + ($qos << 1) + (int)$retain;
+        if ($qos) {
+            $this->msgId++;
+            $packet->id = $this->msgId;
+            $this->pakage[$packet->id] = $packet;
+        }
+        return $packet;
     }
 
     /**

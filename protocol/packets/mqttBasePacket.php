@@ -8,7 +8,7 @@ namespace Intersvyaz\MqttViaWS\packet;
  *
  * @package Intersvyaz\MqttViaWS\packet
  */
-abstract class mqttBasePacket extends basePacket
+abstract class mqttBasePacket
 {
     /** @var int */
     public $type;
@@ -18,4 +18,10 @@ abstract class mqttBasePacket extends basePacket
     public $remainingLength;
     /** @var int */
     public $id;
+
+    /**
+     * @param string $response
+     * @return static
+     */
+    abstract public static function instance($response = null);
 }
