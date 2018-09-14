@@ -18,10 +18,7 @@
 
 #MQTT клиент
 > $client = new MqttClient();
-> $client->setDebug(true);
-> $client->setWrapper($streamObj);
 > $client->setClientId('test_area');
-> $client->open(true, null, 'ndxpqxyr', 'HVrzVaqNk1ky');
 > $client->onPublish = function ($msg) {
     var_dump($msg);
 };
@@ -45,6 +42,8 @@ $client->onUnsubscribe = function ($msg) {
     $res = $client->createPublishPacket("device/08:16:29:3C:FC:1B/open", json_encode($data), 1);
     return $res;
 };
+
+> $client->open($url, $params);
 > $client->run();
 
 ##События
@@ -59,7 +58,10 @@ $client->onUnsubscribe = function ($msg) {
 
 ##Обработчик
 
-Вешаем на `sender` функцию. Вызывается на каждую итерацию. Возвращать должна или false, если ничего не делает, или сформированный пакет, который будет отправлен на сервер.
+Вешаем на `sender` функцию. Вызывается на каждую итерацию. 
+Возвращать должна или false, если ничего не делает, или сформированный пакет, который будет отправлен на сервер.
+
+Не забывать ставить sleep() или другую задержку в функцию. Иначе излишне много крутистя 
 
 ###Функции для формирования пакетов:
 
