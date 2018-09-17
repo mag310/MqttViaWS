@@ -15,7 +15,9 @@
     }
   ],
   "autoload": {
-    "psr-4": {"Intersvyaz\\MqttViaWS\\": ""}
+    "psr-4": {
+      "Intersvyaz\\MqttViaWS\\": "./"
+    }
   },
   "require": {
     "php": ">=7.0.0"
