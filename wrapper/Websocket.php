@@ -59,7 +59,6 @@ class Websocket
     /** @var float */
     public $timeout = 1;
     /** @var int */
-//    public $flags = STREAM_CLIENT_CONNECT | STREAM_CLIENT_PERSISTENT;
     public $flags = STREAM_CLIENT_ASYNC_CONNECT | STREAM_CLIENT_PERSISTENT;
     /** @var resource */
     public $context; //Задается автоматически системой
@@ -67,7 +66,10 @@ class Websocket
     /** @var resource */
     public $stream = null;
 
-
+    /**
+     * @param int $opcode
+     * @return mixed|null
+     */
     private function getTypeName($opcode)
     {
         return $this->opcodes[$opcode] ?? null;
@@ -299,11 +301,6 @@ class Websocket
             error_log("Set timeout error:\t{$this->errno}:\t{$this->errstr}");
             return false;
         };
-
-//        if (!stream_set_blocking($this->stream, false)) {
-//            error_log("Set blocking error:\t{$this->errno}:\t{$this->errstr}");
-//            return false;
-//        };
 
         if ($this->debugMode) {
             echo 'Открыт новый поток' . PHP_EOL;
