@@ -1,13 +1,13 @@
 <?php
 
-namespace Intersvyaz\MqttViaWS\packet;
+namespace Intersvyaz\MqttViaWS\protocol\packet;
 
 use Intersvyaz\MqttViaWS\protocol\Mqtt;
 
 /**
  * Class mqttConnackPacket
  *
- * @package Intersvyaz\MqttViaWS\packet
+ * @package Intersvyaz\MqttViaWS\protocol\packet
  */
 class mqttConnackPacket extends mqttBasePacket
 {

@@ -14,6 +14,9 @@
       "email": "and555a@is74.ru"
     }
   ],
+  "autoload": {
+    "psr-4": {"Intersvyaz\\MqttViaWS\\": ""}
+  },
   "require": {
     "php": ">=7.0.0"
   },

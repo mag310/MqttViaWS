@@ -1,12 +1,12 @@
 <?php
 
-namespace Intersvyaz\MqttViaWS\packet;
+namespace Intersvyaz\MqttViaWS\protocol\packet;
 
 /**
  * Класс для Mqtt пакетов
  * Class mqttBasePacket
  *
- * @package Intersvyaz\MqttViaWS\packet
+ * @package Intersvyaz\MqttViaWS\protocol\packet
  */
 abstract class mqttBasePacket
 {

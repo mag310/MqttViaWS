@@ -1,7 +1,6 @@
 <?php
 
-namespace Intersvyaz\MqttViaWS\packet;
-
+namespace Intersvyaz\MqttViaWS\protocol\packet;
 
 use Intersvyaz\MqttViaWS\protocol\Mqtt;
 

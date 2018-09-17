@@ -1,14 +1,13 @@
 <?php
 
-namespace Intersvyaz\MqttViaWS\packet;
-
+namespace Intersvyaz\MqttViaWS\protocol\packet;
 
 use Intersvyaz\MqttViaWS\protocol\Mqtt;
 
 /**
  * Class mqttPubackPacket
  *
- * @package Intersvyaz\MqttViaWS\packet
+ * @package Intersvyaz\MqttViaWS\protocol\packet
  */
 class mqttPubackPacket extends mqttBasePacket
 {

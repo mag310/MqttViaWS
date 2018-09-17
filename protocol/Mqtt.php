@@ -15,17 +15,17 @@ require_once "packets/mqttSubscribePacket.php";
 require_once "packets/mqttUnsubackPacket.php";
 require_once "packets/mqttUnsubscribePacket.php";
 
-use Intersvyaz\MqttViaWS\packet\mqttBasePacket;
-use Intersvyaz\MqttViaWS\packet\mqttConnackPacket;
-use Intersvyaz\MqttViaWS\packet\mqttConnectPacket;
-use Intersvyaz\MqttViaWS\packet\mqttDisconnectPacket;
-use Intersvyaz\MqttViaWS\packet\mqttPingreqPacket;
-use Intersvyaz\MqttViaWS\packet\mqttPubackPacket;
-use Intersvyaz\MqttViaWS\packet\mqttPublishPacket;
-use Intersvyaz\MqttViaWS\packet\mqttPingrespPacket;
-use Intersvyaz\MqttViaWS\packet\mqttSubackPacket;
-use Intersvyaz\MqttViaWS\packet\mqttSubscribePacket;
-use Intersvyaz\MqttViaWS\packet\mqttUnsubackPacket;
+use Intersvyaz\MqttViaWS\protocol\packet\mqttBasePacket;
+use Intersvyaz\MqttViaWS\protocol\packet\mqttConnackPacket;
+use Intersvyaz\MqttViaWS\protocol\packet\mqttConnectPacket;
+use Intersvyaz\MqttViaWS\protocol\packet\mqttDisconnectPacket;
+use Intersvyaz\MqttViaWS\protocol\packet\mqttPingreqPacket;
+use Intersvyaz\MqttViaWS\protocol\packet\mqttPubackPacket;
+use Intersvyaz\MqttViaWS\protocol\packet\mqttPublishPacket;
+use Intersvyaz\MqttViaWS\protocol\packet\mqttPingrespPacket;
+use Intersvyaz\MqttViaWS\protocol\packet\mqttSubackPacket;
+use Intersvyaz\MqttViaWS\protocol\packet\mqttSubscribePacket;
+use Intersvyaz\MqttViaWS\protocol\packet\mqttUnsubackPacket;
 
 
 /**
