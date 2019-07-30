@@ -246,6 +246,14 @@ class MqttClient
     }
 
     /**
+     * @return bool
+     */
+    public function isConnected()
+    {
+        return $this->isConnected;
+    }
+
+    /**
      * @param string $newClientId
      */
     public function setClientId($newClientId)
