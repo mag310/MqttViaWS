@@ -46,10 +46,23 @@ class mqttPublishPacket extends mqttBasePacket
 
         $payload = substr($response, 1);
 
-        $len = unpack("Cb1/Cb2", $payload);
-        $packet->remainingLength = $len['b1'] + $len['b2'];
+        $len = unpack('Cb1/Cb2/Cb3/Cb4', $payload);
+        $packet->remainingLength = $len['b1'];
+        $startByte = 1;
+        if ($len['b1'] >= 127) {
+            $packet->remainingLength = $packet->remainingLength * 128 + $len['b2'];
+            $startByte = 2;
+            if ($len['b2'] >= 127) {
+                $packet->remainingLength = $packet->remainingLength * 128 + $len['b3'];
+                $startByte = 3;
+                if ($len['b3'] >= 127) {
+                    $packet->remainingLength = $packet->remainingLength * 128 + $len['b4'];
+                    $startByte = 4;
+                }
+            }
+        }
 
-        $payload = substr($payload, 2, $packet->remainingLength);
+        $payload = substr($payload, $startByte, $packet->remainingLength);
 
         $len = unpack("Cb1/Cb2", $payload);
         $tnLen = $len['b1'] + $len['b2'];
