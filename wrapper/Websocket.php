@@ -298,7 +298,7 @@ class Websocket
         }
 
         if (!stream_set_timeout($this->stream, $this->timeout)) {
-            error_log("Set timeout error:\t{$this->errno}:\t{$this->errstr}");
+            trigger_error("Set timeout error:\t{$this->errno}:\t{$this->errstr}", E_USER_ERROR);
             return false;
         };
 

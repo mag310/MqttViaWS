@@ -190,7 +190,7 @@ class MqttClient
     private function send($data)
     {
         if (!$res = fwrite($this->stream, $data)) {
-            error_log('Ошибка при отправке!', E_WARNING);
+            trigger_error('Ошибка при отправке!', E_USER_WARNING);
             return false;
         }
         return true;
@@ -238,7 +238,7 @@ class MqttClient
         $packet->password = $this->password;
 
         if (!$this->wrire($packet)) {
-            error_log('Ошибка при отправке заголовка!', E_WARNING);
+            trigger_error('Ошибка при отправке заголовка!', E_USER_WARNING);
             return false;
         }
 
@@ -511,7 +511,7 @@ class MqttClient
                 case Mqtt::PACKET_CONNACK:
                     /** @var mqttConnackPacket $res */
                     if ($res->returnCode != mqttConnackPacket::CODE_ACCEPTED) {
-                        error_log('Connected error: ' . $res->returnCode, E_WARNING);
+                        trigger_error('Connected error: ' . $res->returnCode, E_USER_ERROR);
                         return false;
                     }
 
